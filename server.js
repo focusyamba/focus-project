@@ -214,10 +214,10 @@ async function pollTelegramUpdates() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: msg.chat.id,
-            text: 'Привет! 👋 Я RunFocus — трекер пробежек.\n\nНажми кнопку ниже, чтобы начать бегать.',
+            text: "Hey! 👋 I'm RunFocus — your run tracker.\n\nTap the button below to get started.",
             reply_markup: {
               inline_keyboard: [[
-                { text: 'Открыть RunFocus', web_app: { url: MINI_APP_URL } },
+                { text: 'Open RunFocus', web_app: { url: MINI_APP_URL } },
               ]],
             },
           }),
