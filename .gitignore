@@ -1,0 +1,7 @@
+node_modules/
+
+.env
+app.db
+app.db-shm
+app.db-wal
+files.zip

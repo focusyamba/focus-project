@@ -125,6 +125,15 @@ app.get('/api/runs/:id', requireTelegramAuth, (req, res) => {
   res.json({ run: { ...run, gps_track: JSON.parse(run.gps_track) } });
 });
 
+// ---------------------------------------------------------------------
+// DELETE /api/runs
+// Deletes ALL of the logged-in user's run history. Irreversible.
+// ---------------------------------------------------------------------
+app.delete('/api/runs', requireTelegramAuth, (req, res) => {
+  const result = db.prepare('DELETE FROM runs WHERE user_id = ?').run(req.user.id);
+  res.json({ deleted: result.changes });
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
