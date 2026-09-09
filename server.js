@@ -134,6 +134,103 @@ app.delete('/api/runs', requireTelegramAuth, (req, res) => {
   res.json({ deleted: result.changes });
 });
 
+// ---------------------------------------------------------------------
+// POST /api/location
+// Called periodically while the Mini App is open (only after the person
+// has granted GPS permission). Updates their last known location.
+// ---------------------------------------------------------------------
+app.post('/api/location', requireTelegramAuth, (req, res) => {
+  const { lat, lon } = req.body;
+
+  if (typeof lat !== 'number' || typeof lon !== 'number') {
+    return res.status(400).json({ error: 'lat and lon must be numbers' });
+  }
+
+  db.prepare(
+    'UPDATE users SET last_lat = ?, last_lon = ?, last_location_at = ? WHERE id = ?'
+  ).run(lat, lon, new Date().toISOString(), req.user.id);
+
+  res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------
+// Admin middleware — separate from Telegram auth. Requires a secret
+// header that only you know, set as the ADMIN_SECRET environment variable.
+// ---------------------------------------------------------------------
+function requireAdmin(req, res, next) {
+  const secret = req.header('X-Admin-Secret');
+
+  if (!process.env.ADMIN_SECRET || secret !== process.env.ADMIN_SECRET) {
+    return res.status(401).json({ error: 'Invalid admin secret' });
+  }
+
+  next();
+}
+
+// ---------------------------------------------------------------------
+// GET /api/admin/locations
+// Admin-only. Returns the last known location of every user who has one,
+// most recently updated first.
+// ---------------------------------------------------------------------
+app.get('/api/admin/locations', requireAdmin, (req, res) => {
+  const users = db
+    .prepare(
+      `SELECT telegram_id, username, first_name, last_name, last_lat, last_lon, last_location_at
+       FROM users
+       WHERE last_lat IS NOT NULL AND last_lon IS NOT NULL
+       ORDER BY last_location_at DESC`
+    )
+    .all();
+
+  res.json({ users });
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
+// ---------------------------------------------------------------------
+// Bot greeting: responds to /start with a welcome message and a button
+// that opens the Mini App. Uses simple long-polling against the
+// Telegram Bot API — no extra libraries needed.
+// ---------------------------------------------------------------------
+const MINI_APP_URL = 'https://focusyamba.github.io/focus-frontend/';
+let lastUpdateId = 0;
+
+async function pollTelegramUpdates() {
+  try {
+    const res = await fetch(
+      `https://api.telegram.org/bot${process.env.BOT_TOKEN}/getUpdates?offset=${lastUpdateId + 1}&timeout=30`
+    );
+    const data = await res.json();
+
+    for (const update of data.result || []) {
+      lastUpdateId = update.update_id;
+
+      const msg = update.message;
+      if (msg && msg.text === '/start') {
+        await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: msg.chat.id,
+            text: 'Привет! 👋 Я RunFocus — трекер пробежек.\n\nНажми кнопку ниже, чтобы начать бегать.',
+            reply_markup: {
+              inline_keyboard: [[
+                { text: 'Открыть RunFocus', web_app: { url: MINI_APP_URL } },
+              ]],
+            },
+          }),
+        });
+      }
+    }
+  } catch (err) {
+    console.error('Polling error:', err);
+  }
+
+  setTimeout(pollTelegramUpdates, 1000);
+}
+
+if (process.env.BOT_TOKEN) {
+  pollTelegramUpdates();
+}
